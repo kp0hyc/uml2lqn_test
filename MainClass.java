@@ -10,21 +10,31 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class MainClass {
 	private Map<String, String> class_id_map = new HashMap<String, String>();
 	private Map<String, String> class_prop_map = new HashMap<String, String>();
 	
+	List<Processor> processors = new ArrayList<Processor>();
+	Map<String, Task> tasks = new HashMap<String, Task>();
+	
 	private class Task {
 		public String name;
 		public String proc;
 		public int multiplicity;
+		public String role;
+		public Set<String> entries = new HashSet<String>();
 	}
 
 	private class CommPath {
@@ -32,10 +42,17 @@ public class MainClass {
 		public String proc2;
 		public String linkSpeed;
 	}
+	
+	private class Processor {
+		String processorId;
+		int multiplicity;
+		String schedulingFlag;
+		String processorSpeed;
+	}
+	
 	private void configurePlatform(Document doc) {
 		NodeList list = doc.getElementsByTagName("packagedElement");
 		
-		List<Task> tasks = new ArrayList<Task>();
 		List<CommPath> commPaths = new ArrayList<CommPath>();
 		
         for (int temp = 0; temp < list.getLength(); temp++) {
@@ -105,7 +122,7 @@ public class MainClass {
                     	  if (ownedAttributes.getLength() > 0) {
 	                    	  class_prop_map.put(((Element)ownedAttributes.item(0)).getAttribute("xmi:id"), t.name);
 	                    	  class_id_map.put(el.getAttribute("xmi:id"), t.name);
-	                    	  tasks.add(t);
+	                    	  tasks.put(t.name, t);
                     	  }
                       }
                   } else if (type.equals("uml:CommunicationPath")) {
@@ -142,7 +159,14 @@ public class MainClass {
             	  //System.out.println("packedElement NodeType: " + node.getNodeType() );
               }
           }
-        for (Task t : tasks) {
+
+        Task task = new Task();
+        task.name = "Sleep_T";
+        task.proc = "Sleep_P";
+        task.multiplicity = 0;
+        tasks.put(task.name, task);
+  	    newProcessorNode("Sleep_p", 0, "f", "1.0");
+        for (Task t : tasks.values()) {
         	newTaskComponent(t.name, t.proc, t.multiplicity);
         }
         for (CommPath cp : commPaths) {
@@ -152,6 +176,12 @@ public class MainClass {
 	
 	private void newProcessorNode(String processorId, int multiplicity, String schedulingFlag, String processorSpeed) {
 		System.out.println("newProcessorNode: \nprocId=" + processorId + "\nmultiplicity=" + multiplicity + "\nschedulingFlag=" + schedulingFlag + "\nprocessorSpeed=" + processorSpeed);
+		Processor p = new Processor();
+		p.processorId = processorId;
+		p.multiplicity = multiplicity;
+		p.schedulingFlag = schedulingFlag;
+		p.processorSpeed = processorSpeed;
+		processors.add(p);
 	}
 	
 	private void newTaskComponent(String taskId, String processorId, int multiplicity) {
@@ -221,11 +251,17 @@ public class MainClass {
 			for (ClientServerCollab csc : clientServerCollabs) {
 				if (cr.role.equals(csc.client_id)) {
 					csc.clients.add(cr.class_name);
+					Task t = tasks.get(cr.class_name);
+					t.role = "r";
+					tasks.put(cr.class_name, t);
 					found = true;
 					break;
 				}
 				if (cr.role.equals(csc.server_id)) {
 					csc.servers.add(cr.class_name);
+					Task t = tasks.get(cr.class_name);
+					t.role = "n";
+					tasks.put(cr.class_name, t);
 					found = true;
 					break;
 				}
@@ -234,6 +270,10 @@ public class MainClass {
 				continue;
 			}
 		}
+		
+		Task t = tasks.get("Sleep_T");
+		t.role = "n";
+		tasks.put("Sleep_T", t);
 		
 		for (ClientServerCollab csc : clientServerCollabs) {
 			for (String server : csc.servers) {
@@ -564,7 +604,12 @@ public class MainClass {
 	}
 	
 	private void createSyncCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
-		System.out.println("createSyncCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
+		System.out.println("createSyncCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
+		Task t = tasks.get(toInstId);
+		if (!t.entries.contains(msgName)) {
+			t.entries.add(msgName);
+			tasks.put(toInstId, t);
+		}
 	}
 	
 	private void createReplyCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
@@ -587,7 +632,40 @@ public class MainClass {
 		System.out.println("terminateInstance:\ntheInst=" + theInst.instance_name +"\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
 	}
 	
+	private void createLQN() throws IOException {
+		BufferedWriter writer = new BufferedWriter(new FileWriter(OUTFILE));
+		writer.write("G \"...\" 0.00001 100 1 0.9 -1\n\n");
+		writer.write("P  " + processors.size() + "\n");
+		for (Processor p : processors) {
+			writer.write("P " + p.processorId + " " + p.schedulingFlag);
+			if (p.multiplicity == 0) {
+				writer.write(" i\n");
+			} else {
+				writer.write(" m " + p.multiplicity + "\n");				
+			}
+		}
+		writer.write("-1\n\n");
+		Task task = tasks.get("Sleep_T");
+		task.entries.add("Sleep");
+		tasks.put("Sleep_T", task);
+		writer.write("T  " + tasks.size() + "\n");
+		for (Task t : tasks.values()) {
+			writer.write("T " + t.name + " " + t.role);
+			for (int i = 1; i <= t.entries.size(); ++i) {
+				writer.write(" " + t.name + "_e" + i);
+			} 
+			writer.write(" -1 " + t.proc);
+			if (t.multiplicity == 0) {
+				writer.write(" i\n");
+			} else {
+				writer.write(" m " + t.multiplicity + "\n");				
+			}
+		}
+		writer.close();
+	}
+	
 	private static final String FILENAME = "../h-orb/h-orb.uml";
+	private static final String OUTFILE = "solution.lqn";
 
 	public static void main(String[] args) {
 		MainClass prog = new MainClass();
@@ -607,6 +685,7 @@ public class MainClass {
 	        configurePlatform(doc);
 	        establishCollaborationInfo(doc);
 	        createProblem(doc);
+	        createLQN();
 			System.out.println("hello kp0hyc");
 		} catch (ParserConfigurationException | SAXException | IOException e) {
 	          e.printStackTrace();
