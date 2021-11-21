@@ -30,11 +30,22 @@ public class MainClass {
 	Map<String, Task> tasks = new HashMap<String, Task>();
 	
 	private class Task {
+		private class Entry {
+			boolean started;
+			boolean initiator;
+		}
 		public String name;
 		public String proc;
 		public int multiplicity;
 		public String role;
-		public Set<String> entries = new HashSet<String>();
+		public Map<String, Entry> entries = new HashMap<String, Entry>();
+		
+		public void addEntry(String name, boolean started, boolean initiator) {
+			Entry e = new Entry();
+			e.initiator = initiator;
+			e.started = started;
+			entries.put(name, e);
+		}
 	}
 
 	private class CommPath {
@@ -253,6 +264,7 @@ public class MainClass {
 					csc.clients.add(cr.class_name);
 					Task t = tasks.get(cr.class_name);
 					t.role = "r";
+					t.addEntry("reference_type", true, true);
 					tasks.put(cr.class_name, t);
 					found = true;
 					break;
@@ -605,15 +617,65 @@ public class MainClass {
 	
 	private void createSyncCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
 		System.out.println("createSyncCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
-		Task t = tasks.get(toInstId);
-		if (!t.entries.contains(msgName)) {
-			t.entries.add(msgName);
-			tasks.put(toInstId, t);
+		Task t1 = tasks.get(fromInstId);
+		Task t2 = tasks.get(toInstId);
+		Task.Entry t2_entry = t2.entries.get(msgName);
+		if (t2_entry == null) {
+			t2.addEntry(msgName, true, false);
+			tasks.put(toInstId, t2);
+		} else {
+			t2_entry.started = true;
+			t2.entries.put(msgName, t2_entry);
+			tasks.put(toInstId, t2);
+		}
+		if (!t1.role.equals("r")) {
+			boolean started = false;
+			for (Task.Entry e : t1.entries.values()) {
+				if (e.started) {
+					started = true;
+					break;
+				}
+			}
+			if (!started) {
+				t1.addEntry(msgName, true, true);
+				tasks.put(fromInstId, t1);
+			}
 		}
 	}
 	
 	private void createReplyCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
-		System.out.println("createReplyCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
+		System.out.println("createReplyCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
+		Task t1 = tasks.get(fromInstId);
+		Task t2 = tasks.get(toInstId);
+		if (!t2.role.equals("r")) {
+			Task.Entry t2_entry = t2.entries.get(msgName);
+			if (t2_entry == null) {
+				t2.addEntry(msgName, true, false);
+				tasks.put(toInstId, t2);
+			} else {
+				t2_entry.started = true;
+				t2.entries.put(msgName, t2_entry);
+				tasks.put(toInstId, t2);
+			}
+			for (String key : t2.entries.keySet()) {
+				Task.Entry e = t2.entries.get(key);
+				if (e.started && e.initiator) {
+					e.started = false;
+					e.initiator = false;
+					t2.entries.put(key, e);
+				}
+			}
+			tasks.put(toInstId, t2);
+		}
+		for (String key : t1.entries.keySet()) {
+			Task.Entry e = t1.entries.get(key);
+			if (e.started) {
+				e.started = false;
+				e.initiator = false;
+				t1.entries.put(key, e);
+			}
+		}
+		tasks.put(fromInstId, t1);
 	}
 	
 	private void createLocalAction(String instId, String actionName, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
@@ -646,7 +708,7 @@ public class MainClass {
 		}
 		writer.write("-1\n\n");
 		Task task = tasks.get("Sleep_T");
-		task.entries.add("Sleep");
+		task.addEntry("Sleep", false, false);
 		tasks.put("Sleep_T", task);
 		writer.write("T  " + tasks.size() + "\n");
 		for (Task t : tasks.values()) {
