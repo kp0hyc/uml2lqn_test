@@ -699,7 +699,7 @@ public class MainClass {
 		writer.write("G \"...\" 0.00001 100 1 0.9 -1\n\n");
 		writer.write("P  " + processors.size() + "\n");
 		for (Processor p : processors) {
-			writer.write("P " + p.processorId + " " + p.schedulingFlag);
+			writer.write("p " + p.processorId + " " + p.schedulingFlag);
 			if (p.multiplicity == 0) {
 				writer.write(" i\n");
 			} else {
@@ -712,7 +712,7 @@ public class MainClass {
 		tasks.put("Sleep_T", task);
 		writer.write("T  " + tasks.size() + "\n");
 		for (Task t : tasks.values()) {
-			writer.write("T " + t.name + " " + t.role);
+			writer.write("t " + t.name + " " + t.role);
 			for (int i = 1; i <= t.entries.size(); ++i) {
 				writer.write(" " + t.name + "_e" + i);
 			} 
