@@ -28,43 +28,146 @@ public class MainClass {
 	
 	List<Processor> processors = new ArrayList<Processor>();
 	Map<String, Task> tasks = new HashMap<String, Task>();
+	Map<String, HashMap<String, EntryLink>> link_callers_map = new HashMap<String, HashMap<String, EntryLink>>();
 	
 	private class Task {
-		private class Entry {
-			boolean started;
-			boolean initiator;
-		}
 		public String name;
 		public String proc;
 		public int multiplicity;
 		public String role;
-		public Map<String, Entry> entries = new HashMap<String, Entry>();
-		
-		public void addEntry(String name, boolean started, boolean initiator) {
-			Entry e = new Entry();
-			e.initiator = initiator;
-			e.started = started;
-			entries.put(name, e);
+		public int entries = 0;
+	}
+	
+	private class Entry {
+		public boolean started;
+		public boolean initiator;
+		public String task;
+		public String msg;
+		public int phase_1_time;
+		public int phase_2_time;
+		public int phase_3_time;
+		public int phase_1_type;
+		public int phase_2_type;
+		public int phase_3_type;
+	}
+	
+	public Map<String, Entry> entries = new HashMap<String, Entry>();
+	
+	//ToDo: delete name
+	public String addEntry(String _delete_it, String task, String msg, boolean started, boolean initiator) {
+		Entry e = new Entry();
+		e.initiator = initiator;
+		e.started = started;
+		e.task = task;
+		e.phase_1_time = 0;
+		e.phase_2_time = 0;
+		e.phase_3_time = 0;
+		e.phase_1_type = 0;
+		e.phase_2_type = 0;
+		e.phase_3_type = 0;
+		e.msg = msg;
+		Task t = tasks.get(task);
+		t.entries++;
+		String entry_name = task + "_" + msg;
+		entries.put(entry_name, e);
+		tasks.put(task, t);
+		return entry_name;
+	}
+	
+	//ToDo: delete name
+	public String addDefaultEntry(String _delete_it, String task, boolean started, boolean initiator) {
+		Entry e = new Entry();
+		e.initiator = initiator;
+		e.started = started;
+		e.task = task;
+		e.phase_1_time = 0;
+		e.phase_2_time = 0;
+		e.phase_3_time = 0;
+		e.phase_1_type = 0;
+		e.phase_2_type = 0;
+		e.phase_3_type = 0;
+		String entry_name = task + "_e0";
+		entries.put(entry_name, e);
+		return entry_name;
+	}
+	
+	public void addEntryLink(String from, String to, float count) {
+		if(!link_callers_map.containsKey(from)) {
+			link_callers_map.put(from, new HashMap<String, EntryLink>());
 		}
+		
+		HashMap<String, EntryLink> instEntryLinks = link_callers_map.get(from);
+		
+		EntryLink currentLink = null;
+		
+		if (!instEntryLinks.containsKey(to)) {
+			currentLink = new EntryLink();
+			currentLink.caller = from;
+			currentLink.reciever = to;
+			currentLink.phase_1_calls = 0;
+			currentLink.phase_2_calls = 0;
+			currentLink.phase_3_calls = 0;
+		} else {
+			currentLink = instEntryLinks.get(to);
+		}
+		currentLink.phase_1_calls += count;
+		instEntryLinks.put(to, currentLink);
+		link_callers_map.put(from, instEntryLinks);
+	}
+	
+	public String getTaskDefaultEntry(String task) {
+		return task + "_e0";
+	}
+	
+	public boolean entryExists(String inst, String msg) {
+		return entries.containsKey(inst + "_" + msg);
+	}
+	
+	private class EntryLink {
+		public String caller;
+		public String reciever;
+		public float phase_1_calls;
+		public float phase_2_calls;
+		public float phase_3_calls;		
 	}
 
 	private class CommPath {
 		public String proc1;
 		public String proc2;
-		public String linkSpeed;
+		public int linkSpeed;
 	}
 	
 	private class Processor {
 		String processorId;
 		int multiplicity;
 		String schedulingFlag;
-		String processorSpeed;
+		int processorSpeed;
+	}
+	
+	List<CommPath> commPaths = new ArrayList<CommPath>();
+	
+	private int getLinkSpeed(String proc1, String proc2) {
+		for (CommPath cp : commPaths) {
+			if ((cp.proc1.equals(proc1) && cp.proc2.equals(proc2)) || (cp.proc1.equals(proc2) && cp.proc2.equals(proc1))) {
+				return cp.linkSpeed;
+			}
+		}
+		//Default value
+		return 1000;
+	}
+	
+	private int getProcessorSpeed(String proc) {
+		for (Processor p : processors) {
+			if (p.processorId.equals(proc)) {
+				return p.processorSpeed;
+			}
+		}
+		//default value
+		return 1;
 	}
 	
 	private void configurePlatform(Document doc) {
 		NodeList list = doc.getElementsByTagName("packagedElement");
-		
-		List<CommPath> commPaths = new ArrayList<CommPath>();
 		
         for (int temp = 0; temp < list.getLength(); temp++) {
 
@@ -138,7 +241,7 @@ public class MainClass {
                       }
                   } else if (type.equals("uml:CommunicationPath")) {
                 	  CommPath commPath = new CommPath();
-                	  commPath.linkSpeed = "10000.0";
+                	  commPath.linkSpeed = 1000;
                 	  
                 	  NodeList comms = element.getElementsByTagName("ownedComment");
                 	  if (comms.getLength() > 0) {
@@ -147,7 +250,7 @@ public class MainClass {
 	                      for (String el : lines) {
 	                    	  String params[] = el.split("=");
 	                    	  switch (params[0]) {
-		                          case "LinkSpeed":  commPath.linkSpeed = params[1];
+		                          case "LinkSpeed":  commPath.linkSpeed = Math.round(Float.parseFloat(params[1]));
 		                            break;
 	                    	  }
 	                      }
@@ -191,7 +294,7 @@ public class MainClass {
 		p.processorId = processorId;
 		p.multiplicity = multiplicity;
 		p.schedulingFlag = schedulingFlag;
-		p.processorSpeed = processorSpeed;
+		p.processorSpeed = Math.round(Float.valueOf(processorSpeed));
 		processors.add(p);
 	}
 	
@@ -199,8 +302,8 @@ public class MainClass {
 		System.out.println("newTaskComponent: \ntaskId=" + taskId + "\nprocessorId=" + processorId + "\nmultiplicity=" + multiplicity);
 	}
 	
-	private void linkProcessorNodes(String proc1, String proc2, String linkSpeed) {
-		System.out.println("linkProcessorNodes: \nproc1=" + proc1 + "\nproc2=" + proc2 + "\nlinkSpeed=" + linkSpeed);
+	private void linkProcessorNodes(String proc1, String proc2, int linkSpeed) {
+		System.out.println("linkProcessorNodes: \nproc1=" + proc1 + "\nproc2=" + proc2 + "\nlinkSpeed=" + String.valueOf(linkSpeed));
 	}
 	
 	private class ClientServerCollab {
@@ -264,7 +367,7 @@ public class MainClass {
 					csc.clients.add(cr.class_name);
 					Task t = tasks.get(cr.class_name);
 					t.role = "r";
-					t.addEntry("reference_type", true, true);
+					//t.addEntry("reference_type", true, true); Do we need it?
 					tasks.put(cr.class_name, t);
 					found = true;
 					break;
@@ -302,6 +405,7 @@ public class MainClass {
 	
 	private class ActionSequence {
 		String name;		
+		float calls;
 	}
 	
 	private class Instance {
@@ -334,7 +438,7 @@ public class MainClass {
 
 	Map<String, Element> func_map = new HashMap<String, Element>();	
 	
-	private void createProblem(Document doc) {
+	private void createProblem(Document doc)  throws Exception {
 		ActionSequence mainAS = createActionSequance("MainActionSequence");
 		
 		NodeList list = doc.getElementsByTagName("ownedOperation");
@@ -368,7 +472,7 @@ public class MainClass {
 		}
 	}
 	
-	private void parseInteraction(Element mainInteraction, ActionSequence mainAS) {
+	private void parseInteraction(Element mainInteraction, ActionSequence mainAS)  throws Exception {
 		NodeList list = mainInteraction.getElementsByTagName("lifeline");
 		
 		List<Instance> instances = new ArrayList<Instance>();
@@ -424,8 +528,10 @@ public class MainClass {
 		NodeList children = mainInteraction.getChildNodes();
 		
 		int timeVal = 100;
-		
-		timeVal = parseFragment(children, mes_map, instance_map, timeVal, prevInst, mainAS);
+
+		HashMap<String, String> current_entry = new HashMap<>();
+		HashMap<String, Boolean> resolve_entry = new HashMap<>();
+		timeVal = parseFragment(children, mes_map, instance_map, timeVal, prevInst, instances, mainAS, current_entry, resolve_entry);
 		
 		for (Instance instance : instances) {
 			terminateInstance(instance, timeVal / 100, mainAS, 0);
@@ -433,8 +539,8 @@ public class MainClass {
 		}
 	}
 	
-	private int parseFragment(NodeList children, Map<String, Message> mes_map, Map<String, String> instance_map, int timeVal, String prevInst, ActionSequence mainAS) {
-		Map<String, Reply> reply_map = new HashMap<String, Reply>();	
+	private int parseFragment(NodeList children, Map<String, Message> mes_map, Map<String, String> instance_map, int timeVal, String prevInst, List<Instance> instances, ActionSequence mainAS, HashMap<String, String> current_entry, HashMap<String, Boolean> resolve_entry) throws Exception  {
+		Map<String, Reply> reply_map = new HashMap<String, Reply>();
 		
 		for (int temp = 0; temp < children.getLength(); temp++) {
 
@@ -531,26 +637,29 @@ public class MainClass {
             				rep.optArg = optArgOut;
             				reply_map.put(mes.name + "_Rep", rep);
             			}
-
+            			//if it is local action?
                 		if (mes.type.isEmpty()) {
-                			createSyncCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, 0);
+                			createSyncCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
                 			prevInst = instance_map.get(element.getAttribute("covered"));
-                			timeVal += 100;
+                			if (duration == 0) {
+                				timeVal += 100;
+                			} else {
+                				timeVal += duration;                				
+                			}
                 		} else if (mes.type.equals("reply")) {
                 			Reply rep = reply_map.get(mes.name);
                 			if (rep != null) {
+                				//Is this arguments correct if it is not null?
                 				argSize = rep.argSize;
                 				optArg = rep.optArg;
                 			}
-                			createReplyCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, 0);
+                			createReplyCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
                 			prevInst = instance_map.get(element.getAttribute("covered"));
-                			timeVal += 100;
-                		}
-                		if (mes.func != null) {
-                			createLocalAction(instance_map.get(element.getAttribute("covered")), mes.func.getAttribute("name"), "", timeVal / 100, mainAS, duration);
-                			prevInst = instance_map.get(element.getAttribute("covered"));
-                			timeVal += 100;
-                			timeVal += duration;
+                			if (duration == 0) {
+                				timeVal += 100;
+                			} else {
+                				timeVal += duration;                				
+                			}
                 		}
                 	}
                 } else if (type.equals("uml:CombinedFragment")) {
@@ -587,7 +696,8 @@ public class MainClass {
                 		}
                 	}
                 	for (OperandContext oc : operandContexts) {
-                		parseFragment(oc.operand.getChildNodes(), mes_map, instance_map, 1, prevInst, oc.actionSequence);
+                		HashMap<String, String> entry_copies = new HashMap<String, String>(current_entry);
+                		parseFragment(oc.operand.getChildNodes(), mes_map, instance_map, 1, prevInst, instances, oc.actionSequence, entry_copies, resolve_entry);
                 	}
                 	timeVal += 100;
                 }
@@ -599,6 +709,7 @@ public class MainClass {
 	private ActionSequence createActionSequance(String name) {
 		ActionSequence actionSequence = new ActionSequence();
 		actionSequence.name = name;
+		actionSequence.calls = 1;
 		return actionSequence;
 	}
 	
@@ -612,74 +723,159 @@ public class MainClass {
 	}
 	
 	private void sleep(String fromInstId, int timeVal, ActionSequence localAS, int expCycles) {
+		
 		System.out.println("sleep:\nfromInstId=" + fromInstId +"\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
 	}
 	
-	private void createSyncCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
+	private void createSyncCall(String fromInstId, String toInstId, String msgName, String optArg, float argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+		if (fromInstId.equals(toInstId)) {
+			createLocalAction(fromInstId, msgName, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
+			return;
+		}
 		System.out.println("createSyncCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
+		
+		if (resolve_entry.containsKey(toInstId) && !resolve_entry.get(toInstId)) {
+			throw new Exception("Entered resolved entry");
+		}
+		
+		if (current_entry.containsKey(toInstId)) {
+			throw new Exception("Entry was not closed and tried to re-open");
+		}
+		
+		if (resolve_entry.containsKey(fromInstId) && !resolve_entry.get(fromInstId)) {
+			resolve_entry.put(toInstId, false);
+			System.out.println("Already resolved");
+			return;
+		}
+		
+		if (entryExists(toInstId, msgName)) {
+			resolve_entry.put(toInstId, false);
+			System.out.println("Entered to resolved entry");
+			return;
+		}
+			
 		Task t1 = tasks.get(fromInstId);
 		Task t2 = tasks.get(toInstId);
-		Task.Entry t2_entry = t2.entries.get(msgName);
-		if (t2_entry == null) {
-			t2.addEntry(msgName, true, false);
-			tasks.put(toInstId, t2);
-		} else {
-			t2_entry.started = true;
-			t2.entries.put(msgName, t2_entry);
-			tasks.put(toInstId, t2);
-		}
-		if (!t1.role.equals("r")) {
-			boolean started = false;
-			for (Task.Entry e : t1.entries.values()) {
-				if (e.started) {
-					started = true;
-					break;
-				}
-			}
-			if (!started) {
-				t1.addEntry(msgName, true, true);
-				tasks.put(fromInstId, t1);
-			}
-		}
-	}
-	
-	private void createReplyCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
-		System.out.println("createReplyCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
-		Task t1 = tasks.get(fromInstId);
-		Task t2 = tasks.get(toInstId);
-		if (!t2.role.equals("r")) {
-			Task.Entry t2_entry = t2.entries.get(msgName);
-			if (t2_entry == null) {
-				t2.addEntry(msgName, true, false);
-				tasks.put(toInstId, t2);
+		
+		int linkSpeed = getLinkSpeed(t1.proc, t2.proc);
+		int procSpeed = getProcessorSpeed(t2.proc);
+		
+		String from_entry = "";
+		
+		if (!current_entry.containsKey(fromInstId)) {
+			if (!entries.containsKey(getTaskDefaultEntry(fromInstId))) {
+				from_entry = addDefaultEntry("", fromInstId, true, true);
+				current_entry.put(fromInstId, from_entry);
 			} else {
-				t2_entry.started = true;
-				t2.entries.put(msgName, t2_entry);
-				tasks.put(toInstId, t2);
+				from_entry = getTaskDefaultEntry(fromInstId);
 			}
-			for (String key : t2.entries.keySet()) {
-				Task.Entry e = t2.entries.get(key);
-				if (e.started && e.initiator) {
-					e.started = false;
-					e.initiator = false;
-					t2.entries.put(key, e);
-				}
-			}
-			tasks.put(toInstId, t2);
+		} else {
+			from_entry = current_entry.get(fromInstId);
 		}
-		for (String key : t1.entries.keySet()) {
-			Task.Entry e = t1.entries.get(key);
-			if (e.started) {
-				e.started = false;
-				e.initiator = false;
-				t1.entries.put(key, e);
-			}
+		
+		String to_entry = addEntry("", toInstId, msgName, true, false);
+		current_entry.put(toInstId, to_entry);
+		
+		Entry to_entry_obj = entries.get(to_entry);
+		float time = 0;
+		if (linkSpeed != 0) {
+			time += argSize/linkSpeed;
 		}
-		tasks.put(fromInstId, t1);
+		if (procSpeed != 0) {
+			time += expCycles/procSpeed;
+		}
+		to_entry_obj.phase_1_time += time;
+		entries.put(to_entry, to_entry_obj);
+		
+		float callNums = localAS.calls;
+		localAS.calls = 1;
+		
+		addEntryLink(from_entry, to_entry, callNums);
 	}
 	
-	private void createLocalAction(String instId, String actionName, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
+	private void createReplyCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+		if (fromInstId.equals(toInstId)) {
+			createLocalAction(fromInstId, msgName, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
+			return;
+		}
+		System.out.println("createReplyCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
+		
+		if (resolve_entry.containsKey(toInstId) && !resolve_entry.get(toInstId) && (!resolve_entry.containsKey(fromInstId) || resolve_entry.get(fromInstId))) {
+			throw new Exception("Reply from unresolved to resolved entry");
+		}
+		
+		if (!current_entry.containsKey(fromInstId)) {
+			throw new Exception("No entries on replying instance");
+		}
+		
+		if (!current_entry.containsKey(toInstId)) {
+			throw new Exception("No entries on replied instance");
+		}
+		
+		if (!entryExists(fromInstId, msgName.substring(0,msgName.length() - 4))) {
+			throw new Exception("No entry to reply");
+		}
+		
+		if (!current_entry.get(fromInstId).equals(fromInstId + "_" + msgName.substring(0,msgName.length() - 4))) {
+			throw new Exception("Incorrect reply message");			
+		}
+		
+		if (!resolve_entry.containsKey(fromInstId)) {
+			resolve_entry.put(fromInstId, true);
+			System.out.println("Exit resolved entry");
+			return;
+		}
+			
+		Task t1 = tasks.get(fromInstId);
+		Task t2 = tasks.get(toInstId);
+		
+		int linkSpeed = getLinkSpeed(t1.proc, t2.proc);
+		int procSpeed = getProcessorSpeed(t2.proc);
+		
+		String from_entry = current_entry.get(fromInstId);
+		Entry from_entry_obj = entries.get(from_entry);
+		float time = 0;
+		if (linkSpeed != 0) {
+			time += argSize/linkSpeed;
+		}
+		if (procSpeed != 0) {
+			time += expCycles/procSpeed;
+		}
+		from_entry_obj.phase_1_time += time;
+		entries.put(from_entry, from_entry_obj);
+		current_entry.remove(fromInstId);
+	}
+	
+	private void createLocalAction(String instId, String actionName, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception{
 		System.out.println("createLocalAction:\ninstId=" + instId + "\nactionName=" + actionName + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
+		
+		if (resolve_entry.containsKey(instId) && !resolve_entry.get(instId)) {
+			resolve_entry.put(instId, false);
+			System.out.println("Already resolved");
+			return;
+		}
+		
+		if (!current_entry.containsKey(instId)) {
+			if (!entries.containsKey(getTaskDefaultEntry(instId))) {
+				String this_entry = addDefaultEntry("", instId, true, true);
+				current_entry.put(instId, this_entry);
+			} else {
+				throw new Exception("Action without entry");
+			}
+		}
+		
+		String this_entry = current_entry.get(instId);
+
+		Task t = tasks.get(instId);
+		int procSpeed = getProcessorSpeed(t.proc);
+		
+		Entry this_entry_obj = entries.get(this_entry);
+		float time = 0;
+		if (procSpeed != 0) {
+			time += expCycles/procSpeed;
+		}
+		this_entry_obj.phase_1_time += time;
+		entries.put(this_entry, this_entry_obj);
 	}
 	
 	private ActionSequence createActionSequence(String instId, String optGuard, int timeVal, ActionSequence localAS, int expCycles) {
@@ -687,6 +883,9 @@ public class MainClass {
 		System.out.println("createActionSequence:\ninstId=" + instId + "\nactionName=" + actionName + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);
 		ActionSequence actionSequence = new ActionSequence();
 		actionSequence.name = actionName;
+		if (!optGuard.isEmpty()) {
+			actionSequence.calls = Float.valueOf(optGuard);
+		}
 		return actionSequence;
 	}
 	
@@ -694,12 +893,26 @@ public class MainClass {
 		System.out.println("terminateInstance:\ntheInst=" + theInst.instance_name +"\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
 	}
 	
+	Map<String, ArrayList<String>> sortedEntries = new HashMap<String, ArrayList<String>>();
+	
+	private void sortEntries() {
+		for (Map.Entry<String, Entry> e : entries.entrySet()) {
+			String task_name = e.getValue().task;
+			ArrayList<String> local_entries = new ArrayList<String>();
+			if (sortedEntries.containsKey(task_name)) {
+				local_entries = sortedEntries.get(task_name);
+			}
+			local_entries.add(e.getKey());
+			sortedEntries.put(task_name, local_entries);
+		}
+	}
+	
 	private void createLQN() throws IOException {
 		BufferedWriter writer = new BufferedWriter(new FileWriter(OUTFILE));
 		writer.write("G \"...\" 0.00001 100 1 0.9 -1\n\n");
 		writer.write("P  " + processors.size() + "\n");
 		for (Processor p : processors) {
-			writer.write("p " + p.processorId + " " + p.schedulingFlag);
+			writer.write("P " + p.processorId + " " + p.schedulingFlag);
 			if (p.multiplicity == 0) {
 				writer.write(" i\n");
 			} else {
@@ -707,15 +920,16 @@ public class MainClass {
 			}
 		}
 		writer.write("-1\n\n");
-		Task task = tasks.get("Sleep_T");
-		task.addEntry("Sleep", false, false);
-		tasks.put("Sleep_T", task);
+		
+		addDefaultEntry("", "Sleep_T", false, false);
 		writer.write("T  " + tasks.size() + "\n");
+		sortEntries();
 		for (Task t : tasks.values()) {
-			writer.write("t " + t.name + " " + t.role);
-			for (int i = 1; i <= t.entries.size(); ++i) {
-				writer.write(" " + t.name + "_e" + i);
-			} 
+			writer.write("T " + t.name + " " + t.role);
+			
+			for (String entry_name : sortedEntries.get(t.name)) {
+				writer.write(" " + entry_name);
+			}
 			writer.write(" -1 " + t.proc);
 			if (t.multiplicity == 0) {
 				writer.write(" i\n");
@@ -723,18 +937,21 @@ public class MainClass {
 				writer.write(" m " + t.multiplicity + "\n");				
 			}
 		}
+		writer.write("-1\n\n");
+		
+		
 		writer.close();
 	}
 	
 	private static final String FILENAME = "../h-orb/h-orb.uml";
 	private static final String OUTFILE = "solution.lqn";
 
-	public static void main(String[] args) {
+	public static void main(String[] args)  throws Exception {
 		MainClass prog = new MainClass();
 		prog.run();
 	}
 	
-	public void run() {
+	public void run()  throws Exception {
 		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
 		try {
 			dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
