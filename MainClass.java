@@ -464,7 +464,7 @@ public class MainClass {
 
                 Element element = (Element) node;
                 
-                if (element.getAttribute("xmi:type").equals("uml:Interaction") && element.getAttribute("name").equals("MainIntercation")) {
+                if (element.getAttribute("xmi:type").equals("uml:Interaction") && element.getAttribute("name").equals("MainInteraction")) {
                 	parseInteraction(element, mainAS);
                 	return;
                 }
@@ -639,7 +639,7 @@ public class MainClass {
             			}
             			//if it is local action?
                 		if (mes.type.isEmpty()) {
-                			createSyncCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
+                			createSyncCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, mes.func, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
                 			prevInst = instance_map.get(element.getAttribute("covered"));
                 			if (duration == 0) {
                 				timeVal += 100;
@@ -653,7 +653,7 @@ public class MainClass {
                 				argSize = rep.argSize;
                 				optArg = rep.optArg;
                 			}
-                			createReplyCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
+                			createReplyCall(instance_map.get(mes.from_inst), instance_map.get(element.getAttribute("covered")), mes.name, mes.func, optArg, argSize, "", timeVal / 100, mainAS, duration, current_entry, resolve_entry);
                 			prevInst = instance_map.get(element.getAttribute("covered"));
                 			if (duration == 0) {
                 				timeVal += 100;
@@ -727,9 +727,16 @@ public class MainClass {
 		System.out.println("sleep:\nfromInstId=" + fromInstId +"\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
 	}
 	
-	private void createSyncCall(String fromInstId, String toInstId, String msgName, String optArg, float argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+	private void createSyncCall(String fromInstId, String toInstId, String name, Element msgElement, String optArg, float argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+		if (msgElement == null) {
+			System.out.println("No function: " + name);
+			return;
+		}
+		
+		String msgName = msgElement.getAttribute("name");
+		
 		if (fromInstId.equals(toInstId)) {
-			createLocalAction(fromInstId, msgName, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
+			createLocalAction(fromInstId, name, msgElement, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
 			return;
 		}
 		System.out.println("createSyncCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
@@ -753,6 +760,8 @@ public class MainClass {
 			System.out.println("Entered to resolved entry");
 			return;
 		}
+		
+		resolve_entry.put(toInstId, true);
 			
 		Task t1 = tasks.get(fromInstId);
 		Task t2 = tasks.get(toInstId);
@@ -793,9 +802,16 @@ public class MainClass {
 		addEntryLink(from_entry, to_entry, callNums);
 	}
 	
-	private void createReplyCall(String fromInstId, String toInstId, String msgName, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+	private void createReplyCall(String fromInstId, String toInstId, String name, Element msgElement, String optArg, int argSize, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception {
+		if (msgElement == null) {
+			System.out.println("No function: " + name);
+			return;
+		}
+
+		String msgName = msgElement.getAttribute("name");
+		
 		if (fromInstId.equals(toInstId)) {
-			createLocalAction(fromInstId, msgName, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
+			createLocalAction(fromInstId, name,  msgElement, optGuard, timeVal, localAS, expCycles, current_entry, resolve_entry);
 			return;
 		}
 		System.out.println("createReplyCall:\nfromInstId=" + fromInstId + "\ntoInstId=" + toInstId + "\nmsgName=" + msgName + "\noptArg=" + optArg + "\nargSize=" + argSize + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);	
@@ -812,11 +828,11 @@ public class MainClass {
 			throw new Exception("No entries on replied instance");
 		}
 		
-		if (!entryExists(fromInstId, msgName.substring(0,msgName.length() - 4))) {
+		if (!entryExists(fromInstId, msgName)) {
 			throw new Exception("No entry to reply");
 		}
 		
-		if (!current_entry.get(fromInstId).equals(fromInstId + "_" + msgName.substring(0,msgName.length() - 4))) {
+		if (!current_entry.get(fromInstId).equals(fromInstId + "_" + msgName)) {
 			throw new Exception("Incorrect reply message");			
 		}
 		
@@ -846,8 +862,15 @@ public class MainClass {
 		current_entry.remove(fromInstId);
 	}
 	
-	private void createLocalAction(String instId, String actionName, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception{
-		System.out.println("createLocalAction:\ninstId=" + instId + "\nactionName=" + actionName + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
+	private void createLocalAction(String instId, String name, Element actionElement, String optGuard, int timeVal, ActionSequence localAS, int expCycles, Map<String, String> current_entry,  Map<String, Boolean> resolve_entry) throws Exception{
+		if (actionElement == null) {
+			System.out.println("No function: " + name);
+			return;
+		}
+
+		String msgName = actionElement.getAttribute("name");
+		
+		System.out.println("createLocalAction:\ninstId=" + instId + "\nactionName=" + msgName + "\noptGuard=" + optGuard + "\ntimeVal=" + timeVal + "\nlocalAS=" + localAS.name + "\nexpCycles=" + expCycles);		
 		
 		if (resolve_entry.containsKey(instId) && !resolve_entry.get(instId)) {
 			resolve_entry.put(instId, false);
@@ -862,6 +885,12 @@ public class MainClass {
 			} else {
 				throw new Exception("Action without entry");
 			}
+		}
+		
+		if (entryExists(instId, msgName)) {
+			resolve_entry.put(instId, false);
+			System.out.println("Entered to resolved entry");
+			return;
 		}
 		
 		String this_entry = current_entry.get(instId);
@@ -938,13 +967,26 @@ public class MainClass {
 			}
 		}
 		writer.write("-1\n\n");
-		
+
+		writer.write("E  " + entries.size() + "\n");
+		for (Map.Entry<String, Entry> e : entries.entrySet()) {
+			writer.write("s " + e.getKey() + " " + e.getValue().phase_1_time + " " + e.getValue().phase_2_time + " " + e.getValue().phase_3_time + " -1\n");
+			writer.write("f " + e.getKey() + " " + e.getValue().phase_1_type + " " + e.getValue().phase_2_type + " " + e.getValue().phase_3_type + " -1\n");
+		}
+		for (Map.Entry<String, HashMap<String, EntryLink>> e : link_callers_map.entrySet()) {
+			for (Map.Entry<String, EntryLink> e2 : e.getValue().entrySet()) {
+				writer.write("y " + e.getKey() + " " + e2.getKey() + " " + e2.getValue().phase_1_calls + " " + e2.getValue().phase_2_calls + " " + e2.getValue().phase_3_calls + " -1\n");
+			}	
+		}
+		writer.write("-1\n\n");		
 		
 		writer.close();
 	}
 	
-	private static final String FILENAME = "../h-orb/h-orb.uml";
-	private static final String OUTFILE = "solution.lqn";
+	//private static final String FILENAME = "../h-orb/h-orb.uml";
+	private static final String FILENAME = "../100to1/100to1.uml";
+	//private static final String OUTFILE = "solution.lqn";
+	private static final String OUTFILE = "solution2.lqn";
 
 	public static void main(String[] args)  throws Exception {
 		MainClass prog = new MainClass();
